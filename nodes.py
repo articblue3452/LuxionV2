@@ -26,5 +26,22 @@ Rules:
     """
     response = llm.invoke(prompt)
     state["intent"] = response.content.strip().lower()
-    print(state)
+
+    return state
+
+def planner(state: LuxionState):
+
+
+    if state["intent"] == "create":
+
+
+        state["plan"] = [
+            "Create new Python file",
+            "Write calculator code",
+            "Run the program",
+            "Test output"
+        ]
+
+
+
     return state
