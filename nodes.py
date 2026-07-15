@@ -1,12 +1,20 @@
 from langchain_ollama import ChatOllama
 from state import LuxionState
+from tools.registry import TOOLS
 import json
-llm = ChatOllama(model="hermes3")
-def classify_intent(state: LuxionState):
-    prompt = f"""
-    You are an intent classifier.
 
-You MUST classify the user's request into EXACTLY ONE of these intents:
+llm = ChatOllama(model="hermes3")
+# ==========================
+# INTENT CLASSIFIER
+# ==========================
+def classify_intent(state: LuxionState):
+
+    prompt = f"""
+You are an Intent Classifier.
+
+Your job is to classify the user's request.
+
+Possible intents:
 
 create
 edit
@@ -16,163 +24,139 @@ optimize
 explain
 
 Rules:
-- Your answer MUST be one of the six words above.
-- Never invent another word.
+
+- Return ONLY one word.
 - Never explain.
-- Never answer with anything except one of those six words.
+- Never use punctuation.
+- Never invent a new intent.
+
+User Request:
+
+{state["user_input"]}
+"""
 
 
-
-    {state["user_input"]}
-    """
     response = llm.invoke(prompt)
+
     state["intent"] = response.content.strip().lower()
 
     return state
 
+
+# ==========================
+# PLANNER
+# ==========================
 def planner(state: LuxionState):
+
+    # Build tool list dynamically
+    tool_text = ""
+
+    for tool in TOOLS.values():
+        tool_text += (
+            f"Tool: {tool.name}\n"
+            f"Description: {tool.description}\n\n"
+        )
 
     prompt = f"""
 You are Luxion Planner.
 
-========================
+=========================
 ROLE
-========================
+=========================
 
-You are responsible ONLY for planning.
+You ONLY create execution plans.
 
-You never execute code.
-You never answer the user.
-You never explain code.
-You never solve the task.
+You NEVER execute code.
 
-Your only job is to convert the user's goal into a structured execution plan.
+You NEVER answer the user.
 
-========================
-TASK
-========================
+You NEVER explain.
 
-Analyze the user's intent and goal.
+=========================
+AVAILABLE TOOLS
+=========================
 
-Break the goal into small logical steps.
+{tool_text}
 
-Each step should represent ONE action only.
-
-========================
+=========================
 RULES
-========================
+=========================
 
 1. Return ONLY valid JSON.
-2. Never return markdown.
-3. Never wrap JSON inside ``` blocks.
-4. Never explain your reasoning.
-5. Never add extra text before or after JSON.
-6. Keep the plan as short as possible.
-7. Do not skip important steps.
-8. Every step must contain:
-   - step
-   - action
-   - description
-9. Step numbers must start from 1.
-10. Actions should describe WHAT should happen, not HOW it is implemented.
 
-========================
+2. Never use markdown.
+
+3. Never wrap JSON in ```.
+
+4. Never explain anything.
+
+5. Use ONLY the tools listed above.
+
+6. Every step MUST contain:
+
+- step
+- tool
+- description
+- args
+
+7. args MUST always be a JSON object.
+
+8. Never invent tool names.
+
+9. One step = one action.
+
+10. Keep the plan as short as possible.
+
+=========================
 OUTPUT FORMAT
-========================
-
-{{
-    "plan": [
-        {{
-            "step": 1,
-            "action": "Create a new Python file",
-            "description": "Create calculator.py"
-        }},
-        {{
-            "step": 2,
-            "action": "Write program",
-            "description": "Implement calculator logic"
-        }}
-    ]
-}}
-
-========================
-FEW SHOT EXAMPLES
-========================
-
-Example 1
-
-Intent:
-create
-
-Goal:
-Create hello.py
-
-Output
-
-{{
-    "plan": [
-        {{
-            "step":1,
-            "action":"Create a new Python file",
-            "description":"Create hello.py"
-        }},
-        {{
-            "step":2,
-            "action":"Write program",
-            "description":"Write hello world program"
-        }},
-        {{
-            "step":3,
-            "action":"Run program",
-            "description":"Execute hello.py"
-        }}
-    ]
-}}
-
-------------------------
-
-Example 2
-
-Intent:
-optimize
-
-Goal:
-Optimize bubble sort
-
-Output
+=========================
 
 {{
     "plan":[
         {{
             "step":1,
-            "action":"Analyze existing implementation",
-            "description":"Inspect bubble sort algorithm"
+            "tool":"write_file",
+            "description":"Create hello.py",
+            "args":{{
+                "path":"hello.py",
+                "content":""
+            }}
         }},
         {{
             "step":2,
-            "action":"Improve algorithm",
-            "description":"Replace inefficient logic"
+            "tool":"write_file",
+            "description":"Write hello world code",
+            "args":{{
+                "path":"hello.py",
+                "content":"print('Hello World')"
+            }}
         }},
         {{
             "step":3,
-            "action":"Test solution",
-            "description":"Verify optimized version"
+            "tool":"run_python",
+            "description":"Run hello.py",
+            "args":{{
+                "path":"hello.py"
+            }}
         }}
     ]
 }}
 
-========================
+=========================
 CURRENT TASK
-========================
+=========================
 
 Intent:
+
 {state["intent"]}
 
 Goal:
+
 {state["user_input"]}
 
-Return ONLY JSON.
+Return ONLY valid JSON.
 """
+
 
     response = llm.invoke(prompt)
 
@@ -181,16 +165,29 @@ Return ONLY JSON.
     print("========================================\n")
 
     try:
-        parsed = json.loads(response.content)
+
+        content = response.content.strip()
+
+        if content.startswith("```json"):
+            content = content.replace("```json", "").replace("```", "").strip()
+
+        elif content.startswith("```"):
+            content = content.replace("```", "").strip()
+
+        parsed = json.loads(content)
+
         state["plan"] = parsed["plan"]
 
-    except Exception:
+    except Exception as e:
+
+        print("Planner JSON Error:", e)
 
         state["plan"] = [
             {
                 "step": 1,
-                "action": "Planner Error",
-                "description": "Planner returned invalid JSON."
+                "tool": "unknown",
+                "description": "Planner failed to generate valid JSON.",
+                "args": {}
             }
         ]
 
