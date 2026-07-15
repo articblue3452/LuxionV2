@@ -1,6 +1,10 @@
-from typing import TypedDict
+from typing import Any, TypedDict
+
+
 class LuxionState(TypedDict):
-    user_input:str
-    intent:str
+    user_input: str
+    intent: str
     plan: list[dict]
-    last_result: any
+    last_result: Any
+    execution_results: list[dict]
+    planner_error: str | None

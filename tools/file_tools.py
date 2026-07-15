@@ -22,12 +22,21 @@ def write_file(path: str, content: str):
 def run_python(path: str):
     path = Path(path)
 
-    result = subprocess.run(
-        [sys.executable, str(path)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            [sys.executable, str(path)],
+            capture_output=True,
+            input="",
+            text=True,
+            check=False,
+            timeout=10,
+        )
+    except subprocess.TimeoutExpired as e:
+        return {
+            "returncode": None,
+            "stdout": e.stdout or "",
+            "stderr": "Process timed out after 10 seconds.",
+        }
 
     return {
         "returncode": result.returncode,
