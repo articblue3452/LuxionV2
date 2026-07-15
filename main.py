@@ -3,7 +3,9 @@ result = app.invoke(
     {
         "user_input": "creat calculater with python",
         "intent": "",
-        "plan":[]
+        "plan":[],
+        "last_result":None
     }
 )
+print("\n========== FINAL STATE ==========\n")
 print(result)

@@ -4,4 +4,3 @@ class LuxionState(TypedDict):
     intent:str
     plan: list[dict]
     last_result: any
-    

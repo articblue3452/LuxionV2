@@ -3,6 +3,7 @@ from state import LuxionState
 from tools.registry import TOOLS
 import json
 
+
 llm = ChatOllama(model="hermes3")
 # ==========================
 # INTENT CLASSIFIER
@@ -190,5 +191,55 @@ Return ONLY valid JSON.
                 "args": {}
             }
         ]
+
+    return state
+def executor(state: LuxionState):
+    print("\n========== EXECUTOR ==========\n")
+
+    for step in state["plan"]:
+        tool_name = step["tool"]
+        args = step["args"]
+        print(f"Executing Step {step['step']}")
+        print(f"Tool : {tool_name}")
+        print(f"Args : {args}")
+        if tool_name not in TOOLS:
+            #print("tool not found")
+            state["last_result"] = {
+
+                "success": False,
+
+                "error": f"Unknown tool: {tool_name}"
+
+            }
+
+            return state
+        tool = TOOLS[tool_name]
+        try:
+
+            result = tool.function(**args)
+
+            state["last_result"] = {
+
+                "success": True,
+
+                "tool": tool_name,
+
+                "output": result
+
+            }
+
+        except Exception as e:
+
+            state["last_result"] = {
+
+                "success": False,
+
+                "tool": tool_name,
+
+                "error": str(e)
+
+            }
+
+            return state
 
     return state
