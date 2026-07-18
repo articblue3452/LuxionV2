@@ -395,6 +395,10 @@ Review whether the execution fulfilled the user's goal. Identify the concrete
 cause of any error and give concise, actionable instructions for the code
 writer. Do not write source code.
 
+A result whose output has "skipped": true is expected for a program that
+uses input(). Its syntax was already validated, so do not reject it solely
+because its interactive run was skipped.
+
 Return only valid JSON with exactly these keys:
 approved (boolean), reason (string), fix_instructions (string).
 
@@ -437,6 +441,35 @@ Execution results:
     return state
 
 
+def is_interactive_python_run(step: dict, plan: list[dict]) -> bool:
+    """Return True when this run_python step targets generated code using input()."""
+    if step["tool"] != "run_python":
+        return False
+
+    target_path = step["args"].get("path")
+    for plan_step in plan:
+        if plan_step["tool"] != "write_file":
+            continue
+
+        write_args = plan_step["args"]
+        if write_args.get("path") != target_path:
+            continue
+
+        try:
+            tree = ast.parse(write_args.get("content", ""))
+        except SyntaxError:
+            return False
+
+        return any(
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "input"
+            for node in ast.walk(tree)
+        )
+
+    return False
+
+
 def executor(state: LuxionState):
     if state.get("planner_error"):
         return state
@@ -460,6 +493,21 @@ def executor(state: LuxionState):
         print(f"Executing Step {step['step']}")
         print(f"Tool : {tool_name}")
         print(f"Args : {args}")
+
+        if is_interactive_python_run(step, state["plan"]):
+            result = {
+                "success": True,
+                "step": step["step"],
+                "tool": tool_name,
+                "output": {
+                    "skipped": True,
+                    "reason": "Skipped run because this program requires interactive input.",
+                },
+            }
+            results.append(result)
+            state["last_result"] = result
+            print("Skipped: program requires interactive input.")
+            continue
 
         tool = TOOLS[tool_name]
 

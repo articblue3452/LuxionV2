@@ -13,32 +13,32 @@ def divide(a, b):
     else:
         raise ValueError("Cannot divide by zero")
 
-def calculator():
-    print("Select operation:")
-    print("1. Add")
-    print("2. Subtract")
-    print("3. Multiply")
-    print("4. Divide")
-
-    choice = input("Enter the number of your choice (1/2/3/4): ")
-
-    num1 = float(input("Enter first number: "))
-    num2 = float(input("Enter second number: "))
-
-    if choice == '1':
-        print(num1, "+", num2, "=", add(num1, num2))
-    elif choice == '2':
-        print(num1, "-", num2, "=", subtract(num1, num2))
-    elif choice == '3':
-        print(num1, "*", num2, "=", multiply(num1, num2))
-    elif choice == '4':
-        result = divide(num1, num2)
-        print(num1, "/", num2, "=", result)
+def calculate(operation, num1, num2):
+    if operation == "add":
+        return add(num1, num2)
+    elif operation == "subtract":
+        return subtract(num1, num2)
+    elif operation == "multiply":
+        return multiply(num1, num2)
+    elif operation == "divide":
+        return divide(num1, num2)
     else:
-        print("Invalid input")
+        raise ValueError(f"Invalid operation: {operation}")
 
 if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) != 4:
+        print("Usage: python calculator.py <operation> <num1> <num2>")
+        print("Supported operations: add, subtract, multiply, divide")
+        sys.exit(1)
+
+    operation = sys.argv[1]
+    num1 = float(sys.argv[2])
+    num2 = float(sys.argv[3])
+
     try:
-        calculator()
+        result = calculate(operation, num1, num2)
+        print(f"Result: {result}")
     except ValueError as e:
         print(e)
