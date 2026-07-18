@@ -8,3 +8,5 @@ class LuxionState(TypedDict):
     last_result: Any
     execution_results: list[dict]
     planner_error: str | None
+    retry_count: int
+    reflection: dict | None

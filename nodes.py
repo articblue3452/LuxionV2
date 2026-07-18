@@ -286,6 +286,15 @@ def code_writer(state: LuxionState):
         word in state["user_input"].lower()
         for word in ("interactive", "input", "prompt", "ask user")
     )
+    reflection_feedback = ""
+    previous_reflection = state.get("reflection") or {}
+
+    if previous_reflection.get("retry"):
+        reflection_feedback = (
+            "\nReflection feedback from the previous execution:\n"
+            f"{previous_reflection.get('fix_instructions', '')}\n"
+            "Correct the issue in this file while preserving the user's goal.\n"
+        )
 
     for step in state["plan"]:
         step = dict(step)
@@ -313,6 +322,7 @@ The file must run without interactive input.
 Do not use input() unless the user explicitly asks for an interactive program.
 If useful, include a small non-interactive demo under if __name__ == "__main__".
 {feedback}
+{reflection_feedback}
 
 User goal:
 {state["user_input"]}
@@ -356,6 +366,74 @@ Step description:
         return state
 
     state["plan"] = updated_plan
+    return state
+
+
+def reflection(state: LuxionState):
+    """Review execution output and request a bounded code repair when needed."""
+    retry_count = state.get("retry_count", 0)
+
+    if state.get("planner_error"):
+        state["reflection"] = {
+            "approved": False,
+            "reason": "The planner failed, so there is no executable plan to review.",
+            "fix_instructions": state["planner_error"],
+            "retry": False,
+        }
+        return state
+
+    execution_failed = any(
+        not result.get("success", False)
+        for result in state.get("execution_results", [])
+    )
+    execution_summary = json.dumps(state.get("execution_results", []), default=str)
+
+    prompt = f"""
+You are Luxion Reflection.
+
+Review whether the execution fulfilled the user's goal. Identify the concrete
+cause of any error and give concise, actionable instructions for the code
+writer. Do not write source code.
+
+Return only valid JSON with exactly these keys:
+approved (boolean), reason (string), fix_instructions (string).
+
+Example:
+{{
+  "approved": false,
+  "reason": "The program failed because add() was not defined.",
+  "fix_instructions": "Define add(a, b) before calling it, then run the file again."
+}}
+
+User goal:
+{state["user_input"]}
+
+Execution results:
+{execution_summary}
+"""
+
+    try:
+        reviewed = parse_json_response(get_llm().invoke(prompt).content)
+        approved = reviewed.get("approved") is True and not execution_failed
+        reason = str(reviewed.get("reason", "Reflection did not provide a reason."))
+        fix_instructions = str(reviewed.get("fix_instructions", reason))
+    except Exception as e:
+        approved = not execution_failed
+        reason = f"Reflection response could not be parsed: {e}"
+        fix_instructions = (
+            "Use the execution error above to correct the generated code and run it again."
+        )
+
+    should_retry = not approved and retry_count < 3
+    if should_retry:
+        state["retry_count"] = retry_count + 1
+
+    state["reflection"] = {
+        "approved": approved,
+        "reason": reason,
+        "fix_instructions": fix_instructions,
+        "retry": should_retry,
+    }
     return state
 
 

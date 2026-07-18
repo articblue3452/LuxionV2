@@ -1,5 +1,3 @@
-import math
-
 def add(a, b):
     return a + b
 
@@ -10,44 +8,37 @@ def multiply(a, b):
     return a * b
 
 def divide(a, b):
-    if b == 0:
+    if b != 0:
+        return a / b
+    else:
         raise ValueError("Cannot divide by zero")
-    return a / b
 
-def square_root(a):
-    return math.sqrt(a)
+def calculator():
+    print("Select operation:")
+    print("1. Add")
+    print("2. Subtract")
+    print("3. Multiply")
+    print("4. Divide")
 
-def factorial(n):
-    if n < 0:
-        raise ValueError("Factorial not defined for negative numbers")
-    result = 1
-    for i in range(1, n + 1):
-        result *= i
-    return result
+    choice = input("Enter the number of your choice (1/2/3/4): ")
+
+    num1 = float(input("Enter first number: "))
+    num2 = float(input("Enter second number: "))
+
+    if choice == '1':
+        print(num1, "+", num2, "=", add(num1, num2))
+    elif choice == '2':
+        print(num1, "-", num2, "=", subtract(num1, num2))
+    elif choice == '3':
+        print(num1, "*", num2, "=", multiply(num1, num2))
+    elif choice == '4':
+        result = divide(num1, num2)
+        print(num1, "/", num2, "=", result)
+    else:
+        print("Invalid input")
 
 if __name__ == "__main__":
-    print("Calculator Demo")
-
-    # Addition
-    print("\nAddition:")
-    print(add(5, 3))
-
-    # Subtraction
-    print("\nSubtraction:")
-    print(subtract(10, 7))
-
-    # Multiplication
-    print("\nMultiplication:")
-    print(multiply(4, 6))
-
-    # Division
-    print("\nDivision:")
-    print(divide(15, 5))
-
-    # Square Root
-    print("\nSquare Root:")
-    print(square_root(16))
-
-    # Factorial
-    print("\nFactorial:")
-    print(factorial(5))
+    try:
+        calculator()
+    except ValueError as e:
+        print(e)
