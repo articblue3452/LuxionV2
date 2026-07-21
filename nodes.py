@@ -1,15 +1,69 @@
 import ast
 import json
+import re
 from typing import Any
 
 from langchain_ollama import ChatOllama
 
+from memory.semantic import SemanticMemory
 from state import LuxionState
 from tools.registry import TOOLS
 
 
 def get_llm():
     return ChatOllama(model="hermes3", temperature=0)
+
+
+def extract_semantic_preferences(user_input: str) -> dict[str, str]:
+    """Extract only explicit, stable preferences from a user message."""
+    preferences = {}
+
+    language_match = re.search(
+        r"\b(?:always\s+use|only\s+use|prefer(?:red)?\s+language\s+is|"
+        r"i\s+prefer)\s+(python|javascript|typescript|java|c\+\+|c#|go|rust)\b",
+        user_input,
+        flags=re.IGNORECASE,
+    )
+    if language_match:
+        language = language_match.group(1).lower()
+        preferences["preferred_language"] = {
+            "python": "Python",
+            "javascript": "JavaScript",
+            "typescript": "TypeScript",
+            "java": "Java",
+            "c++": "C++",
+            "c#": "C#",
+            "go": "Go",
+            "rust": "Rust",
+        }[language]
+
+    framework_match = re.search(
+        r"\b(?:always\s+use|only\s+use|prefer(?:red)?\s+framework\s+is|"
+        r"my\s+favorite\s+framework\s+is)\s+(fastapi|django|flask)\b",
+        user_input,
+        flags=re.IGNORECASE,
+    )
+    if framework_match:
+        framework = framework_match.group(1).lower()
+        preferences["preferred_framework"] = {
+            "fastapi": "FastAPI",
+            "django": "Django",
+            "flask": "Flask",
+        }[framework]
+
+    return preferences
+
+
+def memory(state: LuxionState):
+    """Save explicit preferences, then load them before intent and planning."""
+    semantic_memory = SemanticMemory()
+    preferences = extract_semantic_preferences(state["user_input"])
+
+    for key, value in preferences.items():
+        semantic_memory.set(key, value)
+
+    state["semantic_memory"] = semantic_memory.all()
+    return state
 
 
 def clean_json_content(content: str) -> str:
@@ -185,6 +239,7 @@ User Request:
 
 def planner(state: LuxionState):
     tool_text = ""
+    memory_text = json.dumps(state.get("semantic_memory", {}), indent=2)
 
     for tool in TOOLS.values():
         tool_text += (
@@ -217,6 +272,8 @@ Rules:
 10. Do not use read_file unless the user explicitly asks to inspect an existing file.
 11. Do not say that run_python generates code. It only runs or tests a file.
 12. Keep the plan short.
+13. Apply known user preferences when they are relevant, unless the user
+    explicitly asks for something different.
 
 Output example:
 {{
@@ -243,6 +300,9 @@ Output example:
 
 Intent:
 {state["intent"]}
+
+Known user preferences:
+{memory_text}
 
 Goal:
 {state["user_input"]}
@@ -386,6 +446,25 @@ def reflection(state: LuxionState):
         not result.get("success", False)
         for result in state.get("execution_results", [])
     )
+
+    interactive_run_skipped = any(
+        isinstance(result.get("output"), dict)
+        and result["output"].get("skipped") is True
+        for result in state.get("execution_results", [])
+    )
+
+    if interactive_run_skipped and not execution_failed:
+        state["reflection"] = {
+            "approved": True,
+            "reason": (
+                "The interactive program passed syntax validation; its run was "
+                "intentionally skipped because it requires user input."
+            ),
+            "fix_instructions": "",
+            "retry": False,
+        }
+        return state
+
     execution_summary = json.dumps(state.get("execution_results", []), default=str)
 
     prompt = f"""

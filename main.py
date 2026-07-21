@@ -1,7 +1,8 @@
 from graph import app
 result = app.invoke(
     {
-        "user_input": "creat calculater with python in that user can give input",
+        "user_input": "creat calculater with python in that user can give input only use python ",
+        "semantic_memory": {},
         "intent": "",
         "plan":[],
         "last_result": None,
