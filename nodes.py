@@ -1,6 +1,5 @@
 import ast
 import json
-import re
 from typing import Any
 
 from langchain_ollama import ChatOllama
@@ -12,58 +11,6 @@ from tools.registry import TOOLS
 
 def get_llm():
     return ChatOllama(model="hermes3", temperature=0)
-
-
-def extract_semantic_preferences(user_input: str) -> dict[str, str]:
-    """Extract only explicit, stable preferences from a user message."""
-    preferences = {}
-
-    language_match = re.search(
-        r"\b(?:always\s+use|only\s+use|prefer(?:red)?\s+language\s+is|"
-        r"i\s+prefer)\s+(python|javascript|typescript|java|c\+\+|c#|go|rust)\b",
-        user_input,
-        flags=re.IGNORECASE,
-    )
-    if language_match:
-        language = language_match.group(1).lower()
-        preferences["preferred_language"] = {
-            "python": "Python",
-            "javascript": "JavaScript",
-            "typescript": "TypeScript",
-            "java": "Java",
-            "c++": "C++",
-            "c#": "C#",
-            "go": "Go",
-            "rust": "Rust",
-        }[language]
-
-    framework_match = re.search(
-        r"\b(?:always\s+use|only\s+use|prefer(?:red)?\s+framework\s+is|"
-        r"my\s+favorite\s+framework\s+is)\s+(fastapi|django|flask)\b",
-        user_input,
-        flags=re.IGNORECASE,
-    )
-    if framework_match:
-        framework = framework_match.group(1).lower()
-        preferences["preferred_framework"] = {
-            "fastapi": "FastAPI",
-            "django": "Django",
-            "flask": "Flask",
-        }[framework]
-
-    return preferences
-
-
-def memory(state: LuxionState):
-    """Save explicit preferences, then load them before intent and planning."""
-    semantic_memory = SemanticMemory()
-    preferences = extract_semantic_preferences(state["user_input"])
-
-    for key, value in preferences.items():
-        semantic_memory.set(key, value)
-
-    state["semantic_memory"] = semantic_memory.all()
-    return state
 
 
 def clean_json_content(content: str) -> str:
@@ -89,6 +36,107 @@ def clean_json_content(content: str) -> str:
 
 def parse_json_response(content: str) -> dict[str, Any]:
     return json.loads(clean_json_content(content))
+
+
+def ignored_memory_decision(reason: str) -> dict[str, Any]:
+    """Return a safe decision when memory classification cannot be trusted."""
+    return {
+        "remember": False,
+        "memory_type": None,
+        "key": None,
+        "value": None,
+        "reason": reason,
+    }
+
+
+def validate_memory_decision(decision: Any) -> dict[str, Any]:
+    """Validate the memory-manager response before it can persist user data."""
+    if not isinstance(decision, dict):
+        raise ValueError("Memory decision must be a JSON object.")
+
+    remember = decision.get("remember")
+    reason = decision.get("reason")
+    if not isinstance(remember, bool) or not isinstance(reason, str) or not reason.strip():
+        raise ValueError("Memory decision requires boolean remember and non-empty reason.")
+
+    if not remember:
+        return ignored_memory_decision(reason.strip())
+
+    memory_type = decision.get("memory_type")
+    key = decision.get("key")
+    value = decision.get("value")
+    if memory_type != "semantic":
+        raise ValueError("Only semantic memory is currently supported.")
+    if not isinstance(key, str) or not key.strip():
+        raise ValueError("Remembered semantic memory requires a non-empty key.")
+    if value is None or isinstance(value, (dict, list)):
+        raise ValueError("Remembered semantic memory requires a scalar value.")
+
+    return {
+        "remember": True,
+        "memory_type": "semantic",
+        "key": key.strip(),
+        "value": value,
+        "reason": reason.strip(),
+    }
+
+
+def memory_manager(state: LuxionState):
+    """Use the LLM to decide whether this turn contains durable user knowledge."""
+    prompt = f"""
+You are Luxion's Memory Manager. Decide whether the user's latest message
+contains a stable, useful fact or preference that should be remembered for
+future requests.
+
+Remember only durable user-specific information, such as explicit language,
+framework, style, or workflow preferences. Do not remember one-time tasks,
+temporary details, assistant instructions, guesses, or sensitive personal data.
+
+Return only valid JSON. Use exactly these keys:
+remember (boolean), memory_type ("semantic" or null), key (string or null),
+value (string, number, boolean, or null), reason (string).
+
+When remember is true, memory_type must be "semantic" and key must be a short
+snake_case name. When remember is false, set memory_type, key, and value to null.
+
+Examples:
+{{"remember": true, "memory_type": "semantic", "key": "preferred_language", "value": "Python", "reason": "The user explicitly stated a stable preference."}}
+{{"remember": false, "memory_type": null, "key": null, "value": null, "reason": "This is a one-time request."}}
+
+User message:
+{state["user_input"]}
+"""
+
+    try:
+        response = get_llm().invoke(prompt)
+        state["memory_decision"] = validate_memory_decision(
+            parse_json_response(response.content)
+        )
+    except Exception as e:
+        # A failed or malformed classifier must never result in an automatic save.
+        state["memory_decision"] = ignored_memory_decision(
+            f"Memory manager could not make a safe decision: {e}"
+        )
+
+    return state
+
+
+def route_memory_decision(state: LuxionState) -> str:
+    return "save_memory" if state["memory_decision"]["remember"] else "memory_retrieval"
+
+
+def save_memory(state: LuxionState):
+    """Persist only memory decisions that passed validation."""
+    decision = state["memory_decision"]
+    if decision["remember"] and decision["memory_type"] == "semantic":
+        SemanticMemory().set(decision["key"], decision["value"])
+    return state
+
+
+def memory_retrieval(state: LuxionState):
+    """Load persisted preferences for the intent and planning stages."""
+    state["semantic_memory"] = SemanticMemory().all()
+    return state
 
 
 def clean_code_content(content: str) -> str:

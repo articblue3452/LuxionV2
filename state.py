@@ -4,6 +4,7 @@ from typing import Any, TypedDict
 class LuxionState(TypedDict):
     user_input: str
     semantic_memory: dict[str, Any]
+    memory_decision: dict[str, Any]
     intent: str
     plan: list[dict]
     last_result: Any
