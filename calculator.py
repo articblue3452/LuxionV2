@@ -20,22 +20,20 @@ def main():
     print("3. Multiply")
     print("4. Divide")
 
-    choice = int(input("Enter choice (1/2/3/4): "))
-    
+    choice = input("Enter choice (1/2/3/4): ")
+
     num1 = float(input("Enter first number: "))
     num2 = float(input("Enter second number: "))
 
-    if choice == 1:
+    if choice == '1':
         print(num1, "+", num2, "=", add(num1, num2))
-    elif choice == 2:
+    elif choice == '2':
         print(num1, "-", num2, "=", subtract(num1, num2))
-    elif choice == 3:
+    elif choice == '3':
         print(num1, "*", num2, "=", multiply(num1, num2))
-    elif choice == 4:
-        try:
-            print(num1, "/", num2, "=", divide(num1, num2))
-        except ValueError as e:
-            print(e)
+    elif choice == '4':
+        result = divide(num1, num2)
+        print(num1, "/", num2, "=", result)
     else:
         print("Invalid input")
 

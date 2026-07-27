@@ -42,9 +42,6 @@ def ignored_memory_decision(reason: str) -> dict[str, Any]:
     """Return a safe decision when memory classification cannot be trusted."""
     return {
         "remember": False,
-        "memory_type": None,
-        "key": None,
-        "value": None,
         "reason": reason,
     }
 
@@ -84,26 +81,38 @@ def validate_memory_decision(decision: Any) -> dict[str, Any]:
 def memory_manager(state: LuxionState):
     """Use the LLM to decide whether this turn contains durable user knowledge."""
     prompt = f"""
-You are Luxion's Memory Manager. Decide whether the user's latest message
-contains a stable, useful fact or preference that should be remembered for
-future requests.
+You are Luxion's Semantic Memory Manager.
 
-Remember only durable user-specific information, such as explicit language,
-framework, style, or workflow preferences. Do not remember one-time tasks,
-temporary details, assistant instructions, guesses, or sensitive personal data.
+Your job is to decide whether the user's message contains LONG-TERM information
+that should be remembered for future conversations.
 
-Return only valid JSON. Use exactly these keys:
-remember (boolean), memory_type ("semantic" or null), key (string or null),
-value (string, number, boolean, or null), reason (string).
+WHAT TO REMEMBER
+Only remember STABLE user preferences, identity, or environment. Examples include:
+- Preferred programming language, framework, IDE, operating system, coding style,
+  naming conventions, workspace location, package manager, testing framework, or
+  database preference.
+The information must still be useful weeks or months later.
 
-When remember is true, memory_type must be "semantic" and key must be a short
-snake_case name. When remember is false, set memory_type, key, and value to null.
+DO NOT REMEMBER
+Never remember temporary coding tasks, current project requirements, one-time
+requests, generated code, file names, specific assignments, current bugs, today's
+conversation, or anything that applies only to the current task.
 
-Examples:
-{{"remember": true, "memory_type": "semantic", "key": "preferred_language", "value": "Python", "reason": "The user explicitly stated a stable preference."}}
-{{"remember": false, "memory_type": null, "key": null, "value": null, "reason": "This is a one-time request."}}
+If the user requests a language or technology only for this task, do not remember
+it. For example, "Create a calculator in Python" is task-specific. Remember it
+only when the user explicitly states a persistent preference, such as "Always use
+Python", "I prefer Python", "My favorite language is Python", or "From now on
+always generate Python code."
 
-User message:
+Return ONLY valid JSON and nothing else.
+
+If memory should be stored, return exactly:
+{{"remember": true, "memory_type": "semantic", "key": "...", "value": "...", "reason": "..."}}
+
+Otherwise, return exactly:
+{{"remember": false, "reason": "Task-specific requirement."}}
+
+USER MESSAGE
 {state["user_input"]}
 """
 
