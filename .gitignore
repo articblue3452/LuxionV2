@@ -3,3 +3,4 @@
 .env
 .venv/
 venv/
+memory/chroma_db/
