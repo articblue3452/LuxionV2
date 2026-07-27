@@ -134,6 +134,11 @@ def route_memory_decision(state: LuxionState) -> str:
     return "save_memory" if state["memory_decision"]["remember"] else "memory_retrieval"
 
 
+def route_memory_completion(state: LuxionState) -> str:
+    """Persist a validated memory decision, then finish the request."""
+    return "save_memory" if state["memory_decision"]["remember"] else "end"
+
+
 def save_memory(state: LuxionState):
     """Persist only memory decisions that passed validation."""
     decision = state["memory_decision"]
@@ -290,7 +295,42 @@ User Request:
 """
 
     response = get_llm().invoke(prompt)
-    state["intent"] = response.content.strip().lower()
+    intent = response.content.strip().lower()
+    state["intent"] = intent if intent in TASK_INTENTS | {"explain"} else "explain"
+    return state
+
+
+TASK_INTENTS = frozenset({"create", "edit", "optimize", "run", "test"})
+
+
+def router(state: LuxionState):
+    """Choose the safe execution path for the classified intent."""
+    state["route"] = "explain" if state.get("intent") == "explain" else "planner"
+    return state
+
+
+def route_intent(state: LuxionState) -> str:
+    """Return the graph destination selected by :func:`router`."""
+    return state.get("route", "explain")
+
+
+def explain(state: LuxionState):
+    """Answer informational requests without planning or executing actions."""
+    memory_text = json.dumps(state.get("semantic_memory", {}), indent=2)
+    prompt = f"""
+You are Luxion's Explain Assistant.
+
+Answer the user's question directly and clearly. Do not create an execution
+plan, do not propose tool calls, do not modify files, and do not claim that you
+ran code or searched the web. Use the known user preferences only when relevant.
+
+Known user preferences:
+{memory_text}
+
+User question:
+{state["user_input"]}
+"""
+    state["response"] = get_llm().invoke(prompt).content.strip()
     return state
 
 
@@ -331,6 +371,11 @@ Rules:
 12. Keep the plan short.
 13. Apply known user preferences when they are relevant, unless the user
     explicitly asks for something different.
+14. Use web_search only when recent information, documentation,
+    version-specific information, or external facts are required. Do not use it
+    for problems that can be solved from the user's request and known context.
+15. When web_search is used to answer the user, follow it with explain using
+    the user's question as the question argument.
 
 Output example:
 {{
@@ -648,7 +693,12 @@ def executor(state: LuxionState):
         tool = TOOLS[tool_name]
 
         try:
-            output = tool.function(**args)
+            if tool_name == "explain":
+                research = json.dumps(results, default=str)
+                output = tool.function(args["question"], research=research)
+                state["response"] = output
+            else:
+                output = tool.function(**args)
             success = True
 
             if isinstance(output, dict) and "returncode" in output and output["returncode"] != 0:

@@ -6,6 +6,8 @@ class LuxionState(TypedDict):
     semantic_memory: dict[str, Any]
     memory_decision: dict[str, Any]
     intent: str
+    route: str
+    response: str
     plan: list[dict]
     last_result: Any
     execution_results: list[dict]
