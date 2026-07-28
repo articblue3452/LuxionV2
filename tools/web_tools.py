@@ -6,16 +6,40 @@ import json
 from typing import Any
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+from xml.etree import ElementTree
 
 
 def web_search(query: str) -> list[dict[str, str]]:
-    """Return concise DuckDuckGo Instant Answer results for ``query``.
+    """Return current web/news results for ``query``.
 
-    The tool is intentionally read-only and returns structured data so later
-    nodes can decide how to present the research result.
+    Google News RSS is used first because an Instant Answer endpoint is not a
+    news index and frequently returns no articles for time-sensitive queries.
+    DuckDuckGo remains a read-only fallback for non-news knowledge.
     """
     if not isinstance(query, str) or not query.strip():
         raise ValueError("web_search requires a non-empty query.")
+
+    news_endpoint = "https://news.google.com/rss/search?" + urlencode(
+        {"q": query.strip(), "hl": "en-IN", "gl": "IN", "ceid": "IN:en"}
+    )
+    request = Request(news_endpoint, headers={"User-Agent": "Luxion/1.0"})
+    try:
+        with urlopen(request, timeout=10) as response:
+            root = ElementTree.fromstring(response.read())
+        news_results = []
+        for item in root.findall("./channel/item")[:10]:
+            title = item.findtext("title", default="").strip()
+            url = item.findtext("link", default="").strip()
+            published = item.findtext("pubDate", default="").strip()
+            source = item.findtext("source", default="").strip()
+            if title and url:
+                news_results.append({"title": title, "snippet": source, "url": url, "published_at": published})
+        if news_results:
+            return news_results
+    except (OSError, ElementTree.ParseError):
+        # The non-news fallback below still provides useful results when RSS is
+        # unavailable, such as in restricted corporate networks.
+        pass
 
     endpoint = "https://api.duckduckgo.com/?" + urlencode(
         {"q": query.strip(), "format": "json", "no_html": "1", "skip_disambig": "1"}

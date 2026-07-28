@@ -13,6 +13,7 @@ class LuxionState(TypedDict, total=False):
     conversation: list[dict[str, Any]]
     context: dict[str, Any]
     goal: dict[str, Any]
+    task_state: dict[str, Any]
 
     # Durable and runtime memory
     semantic_memory: dict[str, Any]

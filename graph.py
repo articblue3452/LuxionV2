@@ -9,6 +9,7 @@ from nodes import (
     memory_manager,
     memory_retrieval,
     planner,
+    progress_evaluator,
     reflection,
     route_after_planner,
     route_after_reflection,
@@ -25,6 +26,7 @@ graph.add_node("context_builder", context_builder)
 graph.add_node("goal_understanding", goal_understanding)
 graph.add_node("planner", planner)
 graph.add_node("tool_executor", tool_executor)
+graph.add_node("progress_evaluator", progress_evaluator)
 graph.add_node("reflection", reflection)
 graph.add_node("memory_manager", memory_manager)
 graph.add_node("save_memory", save_memory)
@@ -35,7 +37,8 @@ graph.add_edge("memory_retrieval", "context_builder")
 graph.add_edge("context_builder", "goal_understanding")
 graph.add_edge("goal_understanding", "planner")
 graph.add_conditional_edges("planner", route_after_planner, {"tool_executor": "tool_executor", "memory_manager": "memory_manager"})
-graph.add_edge("tool_executor", "reflection")
+graph.add_edge("tool_executor", "progress_evaluator")
+graph.add_edge("progress_evaluator", "reflection")
 graph.add_conditional_edges("reflection", route_after_reflection, {"planner": "planner"})
 graph.add_conditional_edges("memory_manager", route_memory_completion, {"save_memory": "save_memory", "end": END})
 graph.add_edge("save_memory", END)

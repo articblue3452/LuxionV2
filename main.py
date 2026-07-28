@@ -1,7 +1,7 @@
 from graph import app
 result = app.invoke(
     {
-        "user_input": "scarch for todays news and store it in new file",
+        "user_input": "creat a file and save details of letest update of python",
         "semantic_memory": {},
         "memory_decision": {},
         "intent": "",
